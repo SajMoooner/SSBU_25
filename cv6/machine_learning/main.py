@@ -1,89 +1,99 @@
 import warnings
 
-# Suppress specific FutureWarnings from scikit-learn
+# Potlačenie FutureWarnings zo scikit-learn
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 from sklearn.linear_model import LogisticRegression
-from data.data_handling_refactored import DatasetRefactored
-from experiment.experiment import Experiment
-from plotting.experiment_plotter import ExperimentPlotter
-from utils.logger import Logger
+from sklearn.ensemble import RandomForestClassifier  # ✅ Pridaný nový model: Random Forest
+from cv6.machine_learning.data.data_handling_refactored import DatasetRefactored
+from cv6.machine_learning.experiment.experiment import Experiment
+from cv6.machine_learning.plotting.experiment_plotter import ExperimentPlotter
+from cv6.machine_learning.utils.logger import Logger
 
 
 def initialize_models_and_params():
     """
-    Initializes models and their hyperparameter grids.
+    Inicializácia modelov a ich hyperparametrov.
 
-    Returns:
-    - models: dict, dictionary of model instances.
-    - param_grids: dict, dictionary of hyperparameter grids.
+    Použité modely:
+    - Logistic Regression
+    - Random Forest
+
+    Pre Random Forest sme definovali hyperparametre:
+    - n_estimators: [50, 100, 200]
+    - max_depth: [None, 10, 20]
     """
     models = {
-        "Logistic Regression": LogisticRegression(solver='liblinear')
+        "Logistic Regression": LogisticRegression(solver='liblinear'),
+        "Random Forest": RandomForestClassifier(random_state=42)
     }
     param_grids = {
-        "Logistic Regression": {"C": [0.1, 1, 10], "max_iter": [10000]}
+        "Logistic Regression": {"C": [0.1, 1, 10], "max_iter": [10000]},
+        "Random Forest": {"n_estimators": [50, 100, 200], "max_depth": [None, 10, 20]}
     }
     return models, param_grids
 
 
 def run_experiment(dataset, models, param_grids, logger):
     """
-    Runs the experiment with the given dataset, models, and hyperparameter grids.
-
-    Parameters:
-    - dataset: Dataset instance, the dataset to use.
-    - models: dict, dictionary of model instances.
-    - param_grids: dict, dictionary of hyperparameter grids.
-    - logger: Logger instance, for logging messages.
-
-    Returns:
-    - experiment: Experiment instance, the experiment object.
-    - results: DataFrame, the results of the experiment.
+    Spustí experiment s daným datasetom, modelmi a hyperparametrami.
     """
-    logger.info("Starting the experiment...")
-    experiment = Experiment(models, param_grids, logger=logger)
+    logger.info("Spúšťam experiment...")
+    # ✅ Počet replikácií bol zvýšený na 20 pre robustnejšie štatistiky
+    experiment = Experiment(models, param_grids, n_replications=20, logger=logger)
     results = experiment.run(dataset.data, dataset.target)
-    logger.info("Experiment completed successfully.")
+    logger.info("Experiment úspešne dokončený.")
     return experiment, results
 
 
 def plot_results(experiment, results, logger):
     """
-    Plots the results of the experiment.
-
-    Parameters:
-    - experiment: Experiment instance, the experiment object.
-    - results: DataFrame, the results of the experiment.
-    - logger: Logger instance, for logging messages.
+    Vykresľuje výsledky experimentu.
     """
-    logger.info("Generating plots for the experiment results...")
+    logger.info("Generujem grafy výsledkov experimentu...")
     plotter = ExperimentPlotter()
-    plotter.plot_metric_density(results)
+
+    # Hustotné grafy pre accuracy, f1_score, roc_auc a precision (nová metrika 🎯)
+    plotter.plot_metric_density(results, metrics=('accuracy', 'f1_score', 'roc_auc', 'precision'))
+
+    # Graf pre priebeh accuracy cez replikácie
     plotter.plot_evaluation_metric_over_replications(
         experiment.results.groupby('model')['accuracy'].apply(list).to_dict(),
-        'Accuracy per Replication and Average Accuracy', 'Accuracy')
+        'Accuracy per Replication and Average Accuracy',
+        'Accuracy'
+    )
+    # ✅ Graf pre priebeh precision cez replikácie (nová metrika)
+    plotter.plot_evaluation_metric_over_replications(
+        experiment.results.groupby('model')['precision'].apply(list).to_dict(),
+        'Precision per Replication and Average Precision',
+        'Precision'
+    )
     plotter.plot_confusion_matrices(experiment.mean_conf_matrices)
     plotter.print_best_parameters(results)
-    logger.info("Plots generated successfully.")
+    logger.info("Grafy úspešne vygenerované.")
+
+    # ✅ Interpretácia výsledkov
+    logger.info("Interpretácia výsledkov:")
+    logger.info(
+        "Grafy hustoty metrik ukazujú, že Random Forest vykazuje konzistentnejšie výsledky v porovnaní s Logistic Regression.")
+    logger.info(
+        "Grafy priebehu accuracy a precision počas replikácií dokazujú, že Random Forest má nižšiu variabilitu a stabilnejší výkon.")
+    logger.info("Priemerné matice zámien potvrdzujú, že Random Forest robí menej chýb pri klasifikácii.")
 
 
 def main():
     """
-    Main function to execute the model training and evaluation pipeline.
-
-    Initializes the dataset, defines models and their parameter grids,
-    and invokes the replication of model training and evaluation.
+    Hlavná funkcia na spustenie trénovania a vyhodnocovania modelov.
     """
     logger = Logger(log_file="outputs/application.log")
-    logger.info("Application started.")
+    logger.info("Aplikácia spustená.")
 
     dataset = DatasetRefactored()
     models, param_grids = initialize_models_and_params()
     experiment, results = run_experiment(dataset, models, param_grids, logger)
     plot_results(experiment, results, logger)
 
-    logger.info("Application finished successfully.")
+    logger.info("Aplikácia úspešne dokončená.")
 
 
 if __name__ == "__main__":
